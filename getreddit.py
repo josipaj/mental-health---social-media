@@ -1,7 +1,7 @@
 # mene zanima od subreddita ka naslov i tekst al uglavnom tekst bez naslova i autor
 
 from pkgutil import get_data
-from tkinter import X
+from tkinter import N, X
 from psaw import PushshiftAPI
 import pandas as pd
 pd.options.mode.chained_assignment = None
@@ -10,13 +10,15 @@ import time
 import threading
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.naive_bayes import MultinomialNB
 
-def get_data(subreddit, start_epoch, name):
+def get_data(subreddit, start_epoch, name, num_of_data):
     api = PushshiftAPI()
     data = api.search_submissions(after=start_epoch,
                                 subreddit=subreddit,
                                 filter=['url','author', 'title', 'selftext', 'subreddit'],
-                                limit=10)
+                                limit=num_of_data)
     
     # ovo sve je za dohvatit podatke i ocistit i stavit u dataframe
     # uzeli 10 zadnjih objava(naslov i tekst) stavili u dataframe i uklonili nezeljene stupce
@@ -42,7 +44,7 @@ def clean(data):
 
     #ovo je uklonilo sve retke di je broj rici manji od 3, znaci ukljucujuci i prazne
     data['totalwords'] = data['text'].str.split().str.len()
-    emptyclean = data[data['totalwords'] > 3]
+    emptyclean = data[(data['totalwords'] > 3) & (data['totalwords'] < 200)]
 
     # ovo radi al mi govori da prominin sa loc jer je bice ovo malo zastarjelo    
     emptyclean['firstword'] = emptyclean['text'].str.split().str[0]
@@ -63,30 +65,49 @@ def train(data):
     # pola podataka podili da bude test, pola train
     # x su znaci tekstovi, a y koja je bolest 
     x_train, x_test, y_train, y_test = train_test_split(X, y, random_state=42, test_size=0.5, shuffle=True)
-    
+    #print(y_train)
+
     ################################
     count_vect = CountVectorizer()
     x_train_counts = count_vect.fit_transform(x_train)
-    print(x_train_counts.shape)
+    
+    #print(x_train_counts.shape)
     # ovo mi ne triba a iskreno i ne kuzin za sta se tocno koristi
     #print(f"vocab => {count_vect.vocabulary_.get(u'disaster')}")
+
+    ################################
+    tfidf_transformer = TfidfTransformer()
+    X_train_tfidf = tfidf_transformer.fit_transform(x_train_counts)
+    #print(X_train_tfidf.shape)
+
+    clf = MultinomialNB().fit(X_train_tfidf, y_train)
+    docs_new = ['I want to kill myself', 'I love KFC']
+    X_new_counts = count_vect.transform(docs_new)
+    X_new_tfidf = tfidf_transformer.transform(X_new_counts)
+
+    predicted = clf.predict(X_new_tfidf)
+
+    for doc, category in zip(docs_new, predicted):
+        print(f'{doc} -> {category}')
+
   
 
 
 def main():
     st = time.time()
-    start_epoch=int(dt.datetime(2022, 8, 24).timestamp())
+    start_epoch=int(dt.datetime(2020, 8, 24).timestamp())
 
     # bipolar disorder - BipolarReddit
     # depression - depression_help
     # OCD - OCD 
     # anxiety - Anxiety - Anxietyhelp
     # schizophrenia - schizophrenia - shizoaffective
-
-    bipolar_data = get_data('BipolarReddit', start_epoch, 'bipolar disorder')
-    depression_data = get_data('depression_help', start_epoch, 'depression')
-    ocd_data = get_data('OCD', start_epoch, 'OCD')
-    schizophrenia_data = get_data('schizophrenia', start_epoch, 'schizophrenia')
+    
+    num = 10
+    bipolar_data = get_data('BipolarReddit', start_epoch, 'bipolar disorder', num)
+    depression_data = get_data('depression_help', start_epoch, 'depression', num)
+    ocd_data = get_data('OCD', start_epoch, 'OCD', num)
+    schizophrenia_data = get_data('schizophrenia', start_epoch, 'schizophrenia', num)
 
     all_data = pd.concat([bipolar_data, depression_data, ocd_data, schizophrenia_data], ignore_index=True)
     all_data.to_csv('data.csv')
