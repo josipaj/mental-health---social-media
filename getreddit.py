@@ -13,7 +13,9 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.naive_bayes import MultinomialNB
 
-def get_data(subreddit, start_epoch, name, num_of_data):
+DEFAULT_DATA_SIZE = 10
+
+def get_data(subreddit, start_epoch, name, num_of_data, df):
     api = PushshiftAPI()
     data = api.search_submissions(after=start_epoch,
                                 subreddit=subreddit,
@@ -22,16 +24,42 @@ def get_data(subreddit, start_epoch, name, num_of_data):
     
     # ovo sve je za dohvatit podatke i ocistit i stavit u dataframe
     # uzeli 10 zadnjih objava(naslov i tekst) stavili u dataframe i uklonili nezeljene stupce
+    
+    ######################
+    # uvik od podataka triba napravit dataframe i to je ovo dole
     subs = pd.DataFrame([submission.d_ for submission in data]).drop(labels=['url', 'created_utc', 'created'], axis=1)
-    # print(subs.columns)
-    # ostali stupci author, selftext i title
-
-    # valjalo bi spojit selftext i title sa tipa tockon.
     subs['text'] = subs['selftext'].astype(str) + '.' + subs['title']
     subs = subs.rename(columns={'subreddit': 'disorder'})
     subs['disorder'] = name
-    new = clean(subs.drop(labels=['selftext', 'title'], axis =1))
-    return new
+    new = clean(subs.drop(labels=['selftext', 'title'], axis =1)).reset_index(drop=True)
+    
+
+
+    # ako je df prazan onda se sve doli nastavlja normalno, a ako nije prazan samo ga dodaj u subs 
+    if not df.empty:
+        new = pd.concat([df, new], ignore_index=True)
+    
+    new = new.drop_duplicates()
+    new = new.reset_index(drop = True)
+
+    #new = edit_columns(new, name)
+ 
+    # ostali stupci author, selftext i title, valjalo bi spojit selftext i title sa tipa tockon.
+    # subs['text'] = subs['selftext'].astype(str) + '.' + subs['title']
+    # subs = subs.rename(columns={'subreddit': 'disorder'})
+    # subs['disorder'] = name
+    # new = clean(subs.drop(labels=['selftext', 'title'], axis =1))
+    print(new)
+    data_len= len(new['disorder'] == name)
+    #print(len(new['disorder'] == name)) #ovo je dobro ispisalo
+    # moran smislit sta sad s ovin
+    print(data_len)
+    if data_len < DEFAULT_DATA_SIZE:
+        new = get_data(subreddit, start_epoch, name, DEFAULT_DATA_SIZE+data_len, new)
+    
+    
+    return new.iloc[:10]
+
 
 def clean(data):
     # ukloni sve znakove, nove linije i tabove, i sve sta nije alfanumericko osin ' a mogu i brojeve isto to cu vidit jos
@@ -102,20 +130,18 @@ def main():
     # OCD - OCD 
     # anxiety - Anxiety - Anxietyhelp
     # schizophrenia - schizophrenia - shizoaffective
+    df = pd.DataFrame()
+
+    bipolar_data = get_data('BipolarReddit', start_epoch, 'bipolar disorder', DEFAULT_DATA_SIZE, df)
+    depression_data = get_data('depression_help', start_epoch, 'depression', DEFAULT_DATA_SIZE, df)
+    ocd_data = get_data('OCD', start_epoch, 'OCD', DEFAULT_DATA_SIZE, df)
+    schizophrenia_data = get_data('schizophrenia', start_epoch, 'schizophrenia', DEFAULT_DATA_SIZE, df)
     
-    num = 10
-    bipolar_data = get_data('BipolarReddit', start_epoch, 'bipolar disorder', num)
-    depression_data = get_data('depression_help', start_epoch, 'depression', num)
-    ocd_data = get_data('OCD', start_epoch, 'OCD', num)
-    schizophrenia_data = get_data('schizophrenia', start_epoch, 'schizophrenia', num)
 
     all_data = pd.concat([bipolar_data, depression_data, ocd_data, schizophrenia_data], ignore_index=True)
     all_data.to_csv('data.csv')
 
-    train(all_data)
-
-
-
+    #train(bipolar_data)
 
     et = time.time()
     print("Vrijeme: ", et-st)
